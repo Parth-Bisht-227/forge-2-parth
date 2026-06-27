@@ -109,5 +109,5 @@ agent-log.md          Parth → Hermes → OpenClaw orchestration log
 
 - `agent-log.md` — the Parth → Hermes → OpenClaw loop across all 3 sprints
 - `sprints/` — one doc per sprint with goals, issues, outcomes, evidence
-- `slack-export/` — Slack proof (screenshots/export) — **PENDING: to be added**
-- `evidence/screenshots/` — app/CI screenshots — **PENDING: to be added**
+- `slack-export/screenshots/` - curated Slack proof screenshots committed for review
+- `evidence/screenshots/` - app, local run, PR/CI, and model-routing screenshots committed for review
