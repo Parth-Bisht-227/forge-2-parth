@@ -16,16 +16,48 @@ Laravel 11 · PHP 8.2 · MySQL 8 · Laravel Sanctum ^4.3 · React 19 · Vite 8 �
 
 ## How to Run
 
-### Backend (Laravel + MySQL)
+### Backend (Laravel + MySQL on WSL)
 
 ```bash
+# 1. Install MySQL and PHP MySQL driver
+sudo apt install php-mysql mysql-server
+
+# 2. Start MySQL
+sudo service mysql start
+
+# 3. Create database + user (throwaway local dev creds — NOT a secret)
+sudo mysql -e "
+  CREATE DATABASE pulsedesk;
+  CREATE USER 'pulsedesk'@'localhost' IDENTIFIED BY 'pulsedesk';
+  GRANT ALL PRIVILEGES ON pulsedesk.* TO 'pulsedesk'@'localhost';
+  FLUSH PRIVILEGES;
+"
+
+# 4. Configure environment
 cd backend
-cp .env.example .env          # set DB_* for your MySQL
+cp .env.example .env
+#   Edit .env and set:
+#     DB_DATABASE=pulsedesk
+#     DB_USERNAME=pulsedesk
+#     DB_PASSWORD=***
+
+# 5. Install PHP dependencies
 composer install
+
+# 6. Generate app key
 php artisan key:generate
-php artisan migrate --seed
+
+# 7. Clear cached config (REQUIRED after editing .env — pdo_mysql changes are cached)
+php artisan config:clear
+
+# 8. Run migrations + seeders (fresh, not just migrate)
+php artisan migrate:fresh --seed
+
+# 9. Start the dev server
 php artisan serve             # http://127.0.0.1:8000
 ```
+
+**Troubleshooting:** If the DB connection fails with a missing driver (`pdo_mysql`), install it with `sudo apt install php-mysql` then re-run `php artisan config:clear`.
 
 ### Frontend (React + Vite)
 
