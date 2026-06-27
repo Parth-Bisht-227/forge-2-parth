@@ -14,6 +14,10 @@ A multi-tenant support-desk SaaS. Built by orchestrating Hermes (coordinator) an
 
 Laravel 11 · PHP 8.2 · MySQL 8 · Laravel Sanctum ^4.3 · React 19 · Vite 8 · Tailwind v4
 
+## Model Usage
+
+All agent model calls were routed through EastRouter for the hackathon. Hermes planning/review traffic was observed on z-ai/glm-5.1. OpenClaw was configured during the event with eastrouter/moonshotai/kimi-k2.7-code and later switched to eastrouter/z-ai/glm-5.1 for a routing proof call. Because EastRouter usage evidence visible in the submitted screenshots shows z-ai/glm-5.1, this submission documents the observed usage honestly rather than claiming unverified Kimi execution.
+
 ## How to Run
 
 ### Backend (Laravel + MySQL on WSL)
@@ -39,7 +43,7 @@ cp .env.example .env
 #   Edit .env and set:
 #     DB_DATABASE=pulsedesk
 #     DB_USERNAME=pulsedesk
-#     DB_PASSWORD=***
+#     DB_PASSWORD=pulsedesk
 
 # 5. Install PHP dependencies
 composer install
