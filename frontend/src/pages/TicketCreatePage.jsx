@@ -42,21 +42,13 @@ export default function TicketCreatePage() {
       const ticket = await res.json();
       navigate(`/tickets/${ticket.id}`, { replace: true });
     } catch (err) {
-      if (err.status === 422) {
-        // Re-fetch to get validation errors from the response
-        try {
-          const res = await apiFetch('/api/tickets', {
-            method: 'POST',
-            body: JSON.stringify({
-              subject: form.subject,
-              description: form.description,
-              priority: form.priority,
-            }),
-          });
-        } catch (e2) {
-          // The first error already has the message; try to parse field errors
+      if (err.status === 422 && err.errors) {
+        // Laravel returns { errors: { field: ["message"] } }
+        const fieldErrors = {};
+        for (const [field, messages] of Object.entries(err.errors)) {
+          fieldErrors[field] = Array.isArray(messages) ? messages[0] : messages;
         }
-        setErrors({ general: err.message });
+        setErrors(fieldErrors);
       } else {
         setErrors({ general: err.message || 'Failed to create ticket' });
       }
@@ -125,6 +117,9 @@ export default function TicketCreatePage() {
               </option>
             ))}
           </select>
+          {errors.priority && (
+            <p className="mt-1 text-sm text-red-600">{errors.priority}</p>
+          )}
         </div>
 
         <div>
@@ -138,6 +133,9 @@ export default function TicketCreatePage() {
             className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             placeholder="bug, urgent, frontend"
           />
+          {errors.tags && (
+            <p className="mt-1 text-sm text-red-600">{errors.tags}</p>
+          )}
         </div>
 
         <div className="flex gap-3 pt-2">

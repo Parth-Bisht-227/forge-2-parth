@@ -20,14 +20,17 @@ export async function apiFetch(path, options = {}) {
 
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
+    let fieldErrors = null;
     try {
       const data = await response.json();
       if (data.message) message = data.message;
+      if (data.errors) fieldErrors = data.errors;
     } catch {
       // response had no JSON body
     }
     const error = new Error(message);
     error.status = response.status;
+    if (fieldErrors) error.errors = fieldErrors;
     throw error;
   }
 
