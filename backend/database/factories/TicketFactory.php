@@ -14,13 +14,18 @@ class TicketFactory extends Factory
 {
     public function definition(): array
     {
+        $statuses = ['open', 'in_progress', 'resolved', 'closed'];
+        $priorities = ['low', 'medium', 'high', 'urgent'];
+
         return [
             'organization_id' => Organization::factory(),
-            'created_by' => User::factory(),
-            'title' => fake()->sentence(6),
+            'requester_id' => User::factory(),
+            'assignee_id' => null,
+            'subject' => fake()->sentence(6),
             'description' => fake()->paragraph(3),
-            'status' => fake()->randomElement(['open', 'in_progress', 'resolved', 'closed']),
-            'priority' => fake()->randomElement(['low', 'normal', 'high', 'urgent']),
+            'status' => fake()->randomElement($statuses),
+            'priority' => fake()->randomElement($priorities),
+            'tags' => null,
         ];
     }
 }

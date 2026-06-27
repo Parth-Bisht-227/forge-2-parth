@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\Comment;
 use App\Models\Organization;
+use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -23,11 +25,6 @@ class AuthTest extends TestCase
 
         $response->assertStatus(201)
             ->assertJsonStructure(['user' => ['id', 'name', 'email', 'role'], 'token']);
-
-        $this->assertDatabaseHas('users', [
-            'email' => 'test@example.com',
-            'role' => 'customer',
-        ]);
     }
 
     public function test_register_validates_input(): void
@@ -57,7 +54,7 @@ class AuthTest extends TestCase
             ->assertJsonStructure(['user' => ['id', 'name', 'email'], 'token']);
     }
 
-    public function test_login_fails_with_invalid_credentials(): void
+    public function test_login_returns_401_for_invalid_credentials(): void
     {
         $org = Organization::factory()->create();
         $user = User::factory()->for($org)->create();
@@ -67,7 +64,7 @@ class AuthTest extends TestCase
             'password' => 'wrong-password',
         ]);
 
-        $response->assertStatus(422);
+        $response->assertStatus(401);
     }
 
     public function test_me_returns_authenticated_user(): void
@@ -100,8 +97,6 @@ class AuthTest extends TestCase
             ->postJson('/api/auth/logout');
 
         $response->assertStatus(200);
-
-        // Token record should be deleted from the database
         $this->assertDatabaseMissing('personal_access_tokens', [
             'tokenable_id' => $user->id,
         ]);

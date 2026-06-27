@@ -3,78 +3,106 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreTicketRequest;
+use App\Http\Requests\UpdateTicketRequest;
 use App\Models\Ticket;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 
 class TicketController extends Controller
 {
     public function index(Request $request)
     {
-        $tickets = Ticket::where('organization_id', $request->user()->organization_id)
-            ->with(['creator', 'comments'])
+        $user = $request->user();
+
+        $query = Ticket::where('organization_id', $user->organization_id);
+
+        // Visibility: customers see only their own tickets
+        if ($user->role === 'customer') {
+            $query->where('requester_id', $user->id);
+        }
+
+        // Filters
+        if ($request->filled('status')) {
+            $query->where('status', $request->input('status'));
+        }
+        if ($request->filled('priority')) {
+            $query->where('priority', $request->input('priority'));
+        }
+        if ($request->filled('assignee_id')) {
+            $query->where('assignee_id', $request->input('assignee_id'));
+        }
+        if ($request->filled('q')) {
+            $search = $request->input('q');
+            $query->where(function ($q) use ($search) {
+                $q->where('subject', 'LIKE', "%{$search}%")
+                  ->orWhere('description', 'LIKE', "%{$search}%");
+            });
+        }
+
+        $tickets = $query->with(['requester', 'assignee'])
             ->latest()
-            ->get();
+            ->paginate(15);
 
         return response()->json($tickets);
     }
 
-    public function store(Request $request)
+    public function store(StoreTicketRequest $request)
     {
-        $data = $request->validate([
-            'title' => ['required', 'string', 'max:255'],
-            'description' => ['required', 'string'],
-            'priority' => ['sometimes', 'string', Rule::in(['low', 'normal', 'high', 'urgent'])],
-        ]);
+        $user = $request->user();
 
         $ticket = Ticket::create([
-            'organization_id' => $request->user()->organization_id,
-            'created_by' => $request->user()->id,
-            'title' => $data['title'],
-            'description' => $data['description'],
+            'organization_id' => $user->organization_id,
+            'requester_id' => $user->id,
+            'subject' => $request->input('subject'),
+            'description' => $request->input('description'),
             'status' => 'open',
-            'priority' => $data['priority'] ?? 'normal',
+            'priority' => $request->input('priority', 'medium'),
+            'assignee_id' => $request->input('assignee_id'),
+            'tags' => $request->input('tags'),
         ]);
 
-        return response()->json($ticket->load('creator'), 201);
+        return response()->json($ticket->load(['requester', 'assignee']), 201);
     }
 
     public function show(Request $request, Ticket $ticket)
     {
-        $this->authorizeTenant($request, $ticket);
+        $user = $request->user();
 
-        return response()->json($ticket->load(['creator', 'comments.user']));
-    }
-
-    public function update(Request $request, Ticket $ticket)
-    {
-        $this->authorizeTenant($request, $ticket);
-
-        $data = $request->validate([
-            'title' => ['sometimes', 'string', 'max:255'],
-            'description' => ['sometimes', 'string'],
-            'status' => ['sometimes', 'string', Rule::in(['open', 'in_progress', 'resolved', 'closed'])],
-            'priority' => ['sometimes', 'string', Rule::in(['low', 'normal', 'high', 'urgent'])],
-        ]);
-
-        $ticket->update($data);
-
-        return response()->json($ticket->fresh(['creator', 'comments.user']));
-    }
-
-    public function destroy(Request $request, Ticket $ticket)
-    {
-        $this->authorizeTenant($request, $ticket);
-
-        $ticket->delete();
-
-        return response()->json(['message' => 'Ticket deleted'], 200);
-    }
-
-    private function authorizeTenant(Request $request, Ticket $ticket): void
-    {
-        if ($ticket->organization_id !== $request->user()->organization_id) {
-            abort(403, 'This ticket does not belong to your organization.');
+        // Tenant rule: 404 if not in user's org (don't leak existence)
+        if ($ticket->organization_id !== $user->organization_id) {
+            abort(404);
         }
+
+        // Visibility: customers see only their own tickets
+        if ($user->role === 'customer' && $ticket->requester_id !== $user->id) {
+            abort(404);
+        }
+
+        // Load comments, but filter out internal for customers
+        $ticket->load(['requester', 'assignee']);
+        if ($user->role === 'customer') {
+            $ticket->setRelation('comments', $ticket->comments()->where('type', 'public')->with('user')->get());
+        } else {
+            $ticket->load('comments.user');
+        }
+
+        return response()->json($ticket);
+    }
+
+    public function update(UpdateTicketRequest $request, Ticket $ticket)
+    {
+        $user = $request->user();
+
+        if ($ticket->organization_id !== $user->organization_id) {
+            abort(404);
+        }
+
+        if ($user->role === 'customer' && $ticket->requester_id !== $user->id) {
+            abort(404);
+        }
+
+        $ticket->update($request->validated());
+
+        return response()->json($ticket->fresh(['requester', 'assignee', 'comments.user']));
     }
 }

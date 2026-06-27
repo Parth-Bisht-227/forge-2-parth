@@ -13,21 +13,35 @@ class Ticket extends Model
 
     protected $fillable = [
         'organization_id',
-        'created_by',
-        'title',
+        'requester_id',
+        'assignee_id',
+        'subject',
         'description',
         'status',
         'priority',
+        'tags',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'tags' => 'array',
+        ];
+    }
 
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
     }
 
-    public function creator(): BelongsTo
+    public function requester(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'created_by');
+        return $this->belongsTo(User::class, 'requester_id');
+    }
+
+    public function assignee(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assignee_id');
     }
 
     public function comments(): HasMany

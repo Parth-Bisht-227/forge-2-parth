@@ -13,6 +13,7 @@ return new class extends Migration
             $table->foreignId('ticket_id')->constrained('tickets')->cascadeOnDelete();
             $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
             $table->text('body');
+            $table->string('type')->default('public'); // public, internal
             $table->timestamps();
         });
     }

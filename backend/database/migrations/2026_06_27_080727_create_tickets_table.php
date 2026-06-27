@@ -11,11 +11,13 @@ return new class extends Migration
         Schema::create('tickets', function (Blueprint $table) {
             $table->id();
             $table->foreignId('organization_id')->constrained('organizations')->cascadeOnDelete();
-            $table->foreignId('created_by')->constrained('users')->cascadeOnDelete();
-            $table->string('title');
+            $table->foreignId('requester_id')->constrained('users')->cascadeOnDelete();
+            $table->foreignId('assignee_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->string('subject');
             $table->text('description');
             $table->string('status')->default('open'); // open, in_progress, resolved, closed
-            $table->string('priority')->default('normal'); // low, normal, high, urgent
+            $table->string('priority')->default('medium'); // low, medium, high, urgent
+            $table->json('tags')->nullable();
             $table->timestamps();
         });
     }

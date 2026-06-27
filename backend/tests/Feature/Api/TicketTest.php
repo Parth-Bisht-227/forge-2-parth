@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\Comment;
 use App\Models\Organization;
 use App\Models\Ticket;
 use App\Models\User;
@@ -12,110 +13,300 @@ class TicketTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_index_returns_tickets_for_user_organization(): void
+    private Organization $orgA;
+    private Organization $orgB;
+    private User $orgAdmin;
+    private User $orgAgent;
+    private User $orgCustomer1;
+    private User $orgCustomer2;
+    private User $orgBAgent;
+
+    protected function setUp(): void
     {
-        $org = Organization::factory()->create();
-        $user = User::factory()->for($org)->create();
-        Ticket::factory()->for($org)->create(['created_by' => $user->id]);
-        // Ticket from a different org should NOT appear
-        $otherOrg = Organization::factory()->create();
-        Ticket::factory()->for($otherOrg)->create();
+        parent::setUp();
 
-        $response = $this->actingAs($user, 'sanctum')
-            ->getJson('/api/tickets');
+        $this->orgA = Organization::factory()->create(['name' => 'Org A', 'slug' => 'org-a']);
+        $this->orgB = Organization::factory()->create(['name' => 'Org B', 'slug' => 'org-b']);
 
-        $response->assertStatus(200)
-            ->assertJsonCount(1);
+        $this->orgAdmin = User::factory()->for($this->orgA)->admin()->create();
+        $this->orgAgent = User::factory()->for($this->orgA)->agent()->create();
+        $this->orgCustomer1 = User::factory()->for($this->orgA)->customer()->create();
+        $this->orgCustomer2 = User::factory()->for($this->orgA)->customer()->create();
+        $this->orgBAgent = User::factory()->for($this->orgB)->agent()->create();
     }
 
-    public function test_store_creates_ticket_in_user_organization(): void
+    // Test 1: Org A user CANNOT see Org B's tickets — list returns empty for Org B tickets, GET returns 404
+    public function test_org_a_user_cannot_see_org_b_tickets(): void
     {
-        $org = Organization::factory()->create();
-        $user = User::factory()->for($org)->create();
+        // Create a ticket in Org B
+        $orgBTicket = Ticket::factory()->for($this->orgB)->create([
+            'requester_id' => User::factory()->for($this->orgB)->customer()->create()->id,
+        ]);
 
-        $response = $this->actingAs($user, 'sanctum')
+        // Org A agent lists tickets — should NOT see Org B's ticket
+        $response = $this->actingAs($this->orgAgent, 'sanctum')
+            ->getJson('/api/tickets');
+
+        $response->assertStatus(200);
+        $json = $response->json('data');
+        $this->assertEmpty($json);
+
+        // Org A agent tries to GET Org B's ticket directly — 404
+        $response = $this->actingAs($this->orgAgent, 'sanctum')
+            ->getJson("/api/tickets/{$orgBTicket->id}");
+
+        $response->assertStatus(404);
+    }
+
+    // Test 2: Customer cannot access another org's ticket (404) AND cannot access another customer's ticket in own org (404)
+    public function test_customer_cannot_access_other_org_or_other_customer_ticket(): void
+    {
+        // Org B ticket
+        $orgBTicket = Ticket::factory()->for($this->orgB)->create([
+            'requester_id' => User::factory()->for($this->orgB)->customer()->create()->id,
+        ]);
+
+        // Customer 1 tries to access Org B ticket — 404
+        $response = $this->actingAs($this->orgCustomer1, 'sanctum')
+            ->getJson("/api/tickets/{$orgBTicket->id}");
+        $response->assertStatus(404);
+
+        // Customer 2's ticket in Org A
+        $customer2Ticket = Ticket::factory()->for($this->orgA)->create([
+            'requester_id' => $this->orgCustomer2->id,
+        ]);
+
+        // Customer 1 tries to access Customer 2's ticket — 404
+        $response = $this->actingAs($this->orgCustomer1, 'sanctum')
+            ->getJson("/api/tickets/{$customer2Ticket->id}");
+        $response->assertStatus(404);
+    }
+
+    // Test 3: Basic ticket create + list flow
+    public function test_authenticated_user_creates_and_lists_own_ticket(): void
+    {
+        $response = $this->actingAs($this->orgCustomer1, 'sanctum')
             ->postJson('/api/tickets', [
-                'title' => 'Cannot log in',
+                'subject' => 'Cannot log in',
                 'description' => 'Getting a 500 error on login',
             ]);
 
         $response->assertStatus(201)
-            ->assertJsonPath('organization_id', $org->id)
-            ->assertJsonPath('created_by', $user->id)
+            ->assertJsonPath('subject', 'Cannot log in')
+            ->assertJsonPath('organization_id', $this->orgA->id)
+            ->assertJsonPath('requester_id', $this->orgCustomer1->id)
             ->assertJsonPath('status', 'open')
-            ->assertJsonPath('priority', 'normal');
+            ->assertJsonPath('priority', 'medium');
 
-        $this->assertDatabaseHas('tickets', [
-            'title' => 'Cannot log in',
-            'organization_id' => $org->id,
-        ]);
-    }
-
-    public function test_store_validates_required_fields(): void
-    {
-        $org = Organization::factory()->create();
-        $user = User::factory()->for($org)->create();
-
-        $response = $this->actingAs($user, 'sanctum')
-            ->postJson('/api/tickets', []);
-
-        $response->assertStatus(422);
-    }
-
-    public function test_show_returns_ticket_with_relations(): void
-    {
-        $org = Organization::factory()->create();
-        $user = User::factory()->for($org)->create();
-        $ticket = Ticket::factory()->for($org)->create(['created_by' => $user->id]);
-
-        $response = $this->actingAs($user, 'sanctum')
-            ->getJson("/api/tickets/{$ticket->id}");
+        // List tickets — should see the one they created
+        $response = $this->actingAs($this->orgCustomer1, 'sanctum')
+            ->getJson('/api/tickets');
 
         $response->assertStatus(200)
-            ->assertJsonPath('id', $ticket->id);
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.subject', 'Cannot log in');
     }
 
-    public function test_show_returns_403_for_other_organization_ticket(): void
+    // Test 4a: Customer CANNOT create internal note (403)
+    public function test_customer_cannot_create_internal_note(): void
     {
-        $org = Organization::factory()->create();
-        $user = User::factory()->for($org)->create();
-        $otherOrg = Organization::factory()->create();
-        $otherUser = User::factory()->for($otherOrg)->create();
-        $ticket = Ticket::factory()->for($otherOrg)->create(['created_by' => $otherUser->id]);
+        $ticket = Ticket::factory()->for($this->orgA)->create([
+            'requester_id' => $this->orgCustomer1->id,
+        ]);
 
-        $response = $this->actingAs($user, 'sanctum')
-            ->getJson("/api/tickets/{$ticket->id}");
+        $response = $this->actingAs($this->orgCustomer1, 'sanctum')
+            ->postJson("/api/tickets/{$ticket->id}/comments", [
+                'body' => 'This is internal',
+                'type' => 'internal',
+            ]);
 
         $response->assertStatus(403);
     }
 
-    public function test_update_modifies_ticket(): void
+    // Test 4b: Customer never sees internal comments
+    public function test_customer_never_sees_internal_comments(): void
     {
-        $org = Organization::factory()->create();
-        $user = User::factory()->for($org)->create();
-        $ticket = Ticket::factory()->for($org)->create(['created_by' => $user->id]);
+        $ticket = Ticket::factory()->for($this->orgA)->create([
+            'requester_id' => $this->orgCustomer1->id,
+        ]);
 
-        $response = $this->actingAs($user, 'sanctum')
-            ->putJson("/api/tickets/{$ticket->id}", [
-                'status' => 'in_progress',
-                'priority' => 'high',
-            ]);
+        Comment::factory()->for($ticket)->create([
+            'user_id' => $this->orgAgent->id,
+            'type' => 'public',
+            'body' => 'Public comment',
+        ]);
+        Comment::factory()->for($ticket)->create([
+            'user_id' => $this->orgAgent->id,
+            'type' => 'internal',
+            'body' => 'Secret internal note',
+        ]);
 
-        $response->assertStatus(200)
-            ->assertJsonPath('status', 'in_progress')
-            ->assertJsonPath('priority', 'high');
-    }
-
-    public function test_destroy_deletes_ticket(): void
-    {
-        $org = Organization::factory()->create();
-        $user = User::factory()->for($org)->create();
-        $ticket = Ticket::factory()->for($org)->create(['created_by' => $user->id]);
-
-        $response = $this->actingAs($user, 'sanctum')
-            ->deleteJson("/api/tickets/{$ticket->id}");
+        // Customer GETs ticket — should only see public comment
+        $response = $this->actingAs($this->orgCustomer1, 'sanctum')
+            ->getJson("/api/tickets/{$ticket->id}");
 
         $response->assertStatus(200);
-        $this->assertDatabaseMissing('tickets', ['id' => $ticket->id]);
+        $comments = $response->json('comments');
+        $this->assertCount(1, $comments);
+        $this->assertEquals('public', $comments[0]['type']);
+    }
+
+    // Test 4c: Agent CAN create internal note
+    public function test_agent_can_create_internal_note(): void
+    {
+        $ticket = Ticket::factory()->for($this->orgA)->create([
+            'requester_id' => $this->orgCustomer1->id,
+        ]);
+
+        $response = $this->actingAs($this->orgAgent, 'sanctum')
+            ->postJson("/api/tickets/{$ticket->id}/comments", [
+                'body' => 'Investigating the issue',
+                'type' => 'internal',
+            ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('type', 'internal');
+    }
+
+    // Test 5: Filter/search — status, priority, assignee_id, q
+    public function test_filter_by_status(): void
+    {
+        Ticket::factory()->for($this->orgA)->create([
+            'requester_id' => $this->orgCustomer1->id,
+            'status' => 'open',
+        ]);
+        Ticket::factory()->for($this->orgA)->create([
+            'requester_id' => $this->orgCustomer1->id,
+            'status' => 'resolved',
+        ]);
+
+        $response = $this->actingAs($this->orgAgent, 'sanctum')
+            ->getJson('/api/tickets?status=open');
+
+        $response->assertStatus(200)
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.status', 'open');
+    }
+
+    public function test_filter_by_priority(): void
+    {
+        Ticket::factory()->for($this->orgA)->create([
+            'requester_id' => $this->orgCustomer1->id,
+            'priority' => 'high',
+        ]);
+        Ticket::factory()->for($this->orgA)->create([
+            'requester_id' => $this->orgCustomer1->id,
+            'priority' => 'low',
+        ]);
+
+        $response = $this->actingAs($this->orgAgent, 'sanctum')
+            ->getJson('/api/tickets?priority=high');
+
+        $response->assertStatus(200)
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.priority', 'high');
+    }
+
+    public function test_filter_by_assignee(): void
+    {
+        Ticket::factory()->for($this->orgA)->create([
+            'requester_id' => $this->orgCustomer1->id,
+            'assignee_id' => $this->orgAgent->id,
+        ]);
+        Ticket::factory()->for($this->orgA)->create([
+            'requester_id' => $this->orgCustomer1->id,
+            'assignee_id' => null,
+        ]);
+
+        $response = $this->actingAs($this->orgAgent, 'sanctum')
+            ->getJson("/api/tickets?assignee_id={$this->orgAgent->id}");
+
+        $response->assertStatus(200)
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.assignee_id', $this->orgAgent->id);
+    }
+
+    public function test_search_by_query(): void
+    {
+        Ticket::factory()->for($this->orgA)->create([
+            'requester_id' => $this->orgCustomer1->id,
+            'subject' => 'Login page broken',
+            'description' => 'Users cannot authenticate',
+        ]);
+        Ticket::factory()->for($this->orgA)->create([
+            'requester_id' => $this->orgCustomer1->id,
+            'subject' => 'Payment gateway',
+            'description' => 'Stripe integration issue',
+        ]);
+
+        $response = $this->actingAs($this->orgAgent, 'sanctum')
+            ->getJson('/api/tickets?q=login');
+
+        $response->assertStatus(200)
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.subject', 'Login page broken');
+    }
+
+    public function test_filters_combine(): void
+    {
+        Ticket::factory()->for($this->orgA)->create([
+            'requester_id' => $this->orgCustomer1->id,
+            'status' => 'open',
+            'priority' => 'high',
+        ]);
+        Ticket::factory()->for($this->orgA)->create([
+            'requester_id' => $this->orgCustomer1->id,
+            'status' => 'open',
+            'priority' => 'low',
+        ]);
+        Ticket::factory()->for($this->orgA)->create([
+            'requester_id' => $this->orgCustomer1->id,
+            'status' => 'resolved',
+            'priority' => 'high',
+        ]);
+
+        $response = $this->actingAs($this->orgAgent, 'sanctum')
+            ->getJson('/api/tickets?status=open&priority=high');
+
+        $response->assertStatus(200)
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.status', 'open')
+            ->assertJsonPath('data.0.priority', 'high');
+    }
+
+    // Customer visibility: only own tickets in list
+    public function test_customer_only_sees_own_tickets_in_list(): void
+    {
+        Ticket::factory()->for($this->orgA)->create([
+            'requester_id' => $this->orgCustomer1->id,
+        ]);
+        Ticket::factory()->for($this->orgA)->create([
+            'requester_id' => $this->orgCustomer2->id,
+        ]);
+
+        // Customer 1 lists — sees only their ticket
+        $response = $this->actingAs($this->orgCustomer1, 'sanctum')
+            ->getJson('/api/tickets');
+
+        $response->assertStatus(200)
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.requester_id', $this->orgCustomer1->id);
+    }
+
+    // Agent sees ALL tickets in their org
+    public function test_agent_sees_all_tickets_in_org(): void
+    {
+        Ticket::factory()->for($this->orgA)->create([
+            'requester_id' => $this->orgCustomer1->id,
+        ]);
+        Ticket::factory()->for($this->orgA)->create([
+            'requester_id' => $this->orgCustomer2->id,
+        ]);
+
+        $response = $this->actingAs($this->orgAgent, 'sanctum')
+            ->getJson('/api/tickets');
+
+        $response->assertStatus(200)
+            ->assertJsonCount(2, 'data');
     }
 }

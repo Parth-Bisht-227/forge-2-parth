@@ -17,6 +17,7 @@ class CommentFactory extends Factory
             'ticket_id' => Ticket::factory(),
             'user_id' => User::factory(),
             'body' => fake()->paragraph(2),
+            'type' => fake()->randomElement(['public', 'internal']),
         ];
     }
 }
