@@ -1,12 +1,19 @@
 import { useState } from 'react';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { user, login } = useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Already authenticated → redirect to /tickets
+  if (user) {
+    return <Navigate to="/tickets" replace />;
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -14,6 +21,7 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await login(email, password);
+      navigate('/tickets', { replace: true });
     } catch (err) {
       setError(err.message || 'Login failed. Please check your credentials.');
     } finally {

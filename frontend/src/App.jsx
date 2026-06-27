@@ -3,7 +3,6 @@ import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AppLayout from './components/AppLayout';
 import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
 import TicketsPage from './pages/TicketsPage';
 
 export default function App() {
@@ -12,17 +11,13 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route
-            element={
-              <ProtectedRoute>
-                <AppLayout />
-              </ProtectedRoute>
-            }
-          >
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/tickets" element={<TicketsPage />} />
+          <Route element={<ProtectedRoute />}>
+            <Route element={<AppLayout />}>
+              <Route path="/tickets" element={<TicketsPage />} />
+            </Route>
           </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/" element={<Navigate to="/tickets" replace />} />
+          <Route path="*" element={<Navigate to="/tickets" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
