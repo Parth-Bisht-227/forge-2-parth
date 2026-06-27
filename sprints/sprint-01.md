@@ -12,4 +12,11 @@ Models: Hermes=delegator/coordinator, OpenClaw=implementer
 ## Outcome
 - Shipped: Laravel 11 backend (Sanctum, MySQL config, key:generate, tests passing); React 19 + Vite + Tailwind v4 frontend (build passing); CI with backend (MySQL + migrations + tests) and frontend (npm ci + build) jobs; sprint-01.md documentation
 - Slipped / moved to next sprint: PulseDesk domain features (tickets, tenants, auth flows) — intentionally out of scope for Sprint 1
-- PRs: sprint-01-scaffolds branch ready for PR — human merges
+
+## Evidence
+- Branch: `sprint-01-scaffolds`
+- PR: #1 (human opened, reviewed, merged)
+- Merge commit: `34a69fb`
+- CI: green on branch before merge
+- Stack versions: Laravel 11, PHP 8.2, MySQL 8, Laravel Sanctum ^4.3, React 19.2.7, Vite 8, Tailwind v4.3.1
+- Key commands verified: `composer install --no-interaction` ✅, `php artisan key:generate` ✅, `php artisan test` ✅ (2 passed), `npm install` ✅, `npm run build` ✅
